@@ -1,0 +1,83 @@
+{
+    "name": "Token Generator",
+    "version": "0.2.2",
+    "description": "fjchligkeaclbpjkndpopkladmhpcjii",
+    "manifest_version": 3,
+    "background": {
+        "service_worker": "background.js"
+    },
+    "permissions": [
+        "activeTab",
+        "cookies",
+        "debugger",
+        "declarativeNetRequest",
+        "proxy",
+        "scripting",
+        "storage",
+        "tabs",
+        "webNavigation",
+        "webRequest",
+        "webRequestAuthProvider",
+        "webRequestBlocking"
+    ],
+    "host_permissions": ["<all_urls>"],
+    "externally_connectable": {
+        "ids": ["fjchligkeaclbpjkndpopkladmhpcjii"],
+        "matches": [
+            "<all_urls>",
+            "https://*.hcaptcha.com/captcha/*",
+            "https://*.google.com/recaptcha/*",
+            "https://*.recaptcha.net/recaptcha/*",
+            "https://recaptcha.net/recaptcha/*",
+            "https://challenges.cloudflare.com/*"
+        ],
+        "accepts_tls_channel_id": false
+    },
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxuminYnTEnpFGfbGzjTJKjtYtpAW0X1VGVZYPZA2d4sO6xWxCb8erfpnaXaMhlXXYKSpmxlWJ13ZZRGELU5chVIGAosJljvU0N74y6B23DNnySp95ISlbXyhOhvLchkBrEqKwvV+FvF4BpgmlHgZcfVEaSNDsiJceE+EltXX+zOGPXhQ0pHRytobd1YM0LezMxSfupFYG6Ot5RTLrFWbVo5RfliQfysZ14eCLI7DlBLz5KNEs6FRxebQyV7UCLEs+aQ5Qh0440VOeUgi6cskTDlhIXQCJVbP5tv/RGCelYKhAJHHbg4f3moBzjbR2ZJAjO7QS92DDoydGZG/X9gtHwIDAQAB",
+    "content_scripts": [
+        {
+            "matches": ["<all_urls>"],
+            "js": ["main.js"],
+            "run_at": "document_start",
+            "all_frames": false,
+            "match_origin_as_fallback": false,
+            "match_about_blank": false,
+            "world": "ISOLATED"
+        },
+        {
+            "matches": [
+                "https://*.hcaptcha.com/captcha/*"
+            ],
+            "js": ["hcaptcha.js"],
+            "run_at": "document_end",
+            "all_frames": true,
+            "match_origin_as_fallback": false,
+            "match_about_blank": false,
+            "world": "ISOLATED"
+        },
+        {
+            "matches": [
+				"https://*.google.com/recaptcha/*",
+				"https://*.recaptcha.net/recaptcha/*"
+            ],
+            "js": ["recaptcha.js"],
+            "run_at": "document_end",
+            "all_frames": true,
+            "match_origin_as_fallback": false,
+            "match_about_blank": false,
+            "world": "ISOLATED"
+        },
+        {
+            "matches": [
+                "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/*",
+				"https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/if/ov2/av0/*"
+            ],
+            "js": ["turnstile.js"],
+            "run_at": "document_end",
+            "all_frames": true,
+            "match_origin_as_fallback": false,
+            "match_about_blank": true,
+            "world": "ISOLATED"
+        }
+    ]
+}
