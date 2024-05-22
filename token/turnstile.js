@@ -1,5 +1,10 @@
 (() => {
-    const VERBOSE = false;
+    let EXT_ID = null;
+    let API_TYPE = null;
+    let DEBUG = null;
+    let VERBOSE = null;
+    let URLS = null;
+    let TIMEOUTS = null;
 
     class BG {
         static exec() {
@@ -27,20 +32,32 @@
         return $fail.style.display !== 'none';
     }
 
-    function is_timeout(start) {
-        if (Date.now() - start > 1000 * 30) return true;
+    function is_timeout(start, timeout = 60) {
+        if (Date.now() - start > 1000 * timeout) return true;
         return false;
     }
 
     (async () => {
+        const config = await BG.exec('Config.get');
+        EXT_ID = config.EXT_ID;
+        API_TYPE = config.API_TYPE;
+        DEBUG = config.DEBUG;
+        VERBOSE = config.VERBOSE;
+        URLS = config.URLS;
+        TIMEOUTS = config.TIMEOUTS;
+
         await sleep(1000 * 10);
 
         const start = Date.now();
         while (true) {
             await sleep(1000);
-            if (is_rate_limited() || is_timeout(start)) {
+            if (is_rate_limited()) {
                 const r = await BG.exec('Jobs.get');
                 VERBOSE && console.error('turnstile rate limited', JSON.stringify(r));
+                await BG.exec('Jobs.rate_limited', { job_id: r.job.id });
+            } else if (is_timeout(start, TIMEOUTS.turnstile)) {
+                const r = await BG.exec('Jobs.get');
+                VERBOSE && console.error('turnstile timeout error', JSON.stringify(r));
                 await BG.exec('Jobs.rate_limited', { job_id: r.job.id });
             }
         }

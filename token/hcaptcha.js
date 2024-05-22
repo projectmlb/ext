@@ -1,5 +1,10 @@
 (() => {
-    const VERBOSE = false;
+    let EXT_ID = null;
+    let API_TYPE = null;
+    let DEBUG = null;
+    let VERBOSE = null;
+    let URLS = null;
+    let TIMEOUTS = null;
 
     class BG {
         static exec() {
@@ -46,10 +51,16 @@
     function is_banned() {
         const status = document.querySelector('#status')?.innerHTML;
         return status === "Account banned, service suspended";
+        // return false;
+    }
+
+    function is_timeout(start, timeout = 60) {
+        if (Date.now() - start > 1000 * timeout) return true;
+        return false;
     }
 
     (async () => {
-        await sleep(1000 * 30);
+        await sleep(1000 * 10);
 
         while (true) {
             await sleep(1000);
@@ -70,17 +81,32 @@
 
     // Starts instantly
     (async () => {
+        const config = await BG.exec('Config.get');
+        EXT_ID = config.EXT_ID;
+        API_TYPE = config.API_TYPE;
+        DEBUG = config.DEBUG;
+        VERBOSE = config.VERBOSE;
+        URLS = config.URLS;
+        TIMEOUTS = config.TIMEOUTS;
+
+        const start = Date.now();
         while (true) {
             await sleep(1000);
-
             if (is_invalid_config()) {
                 const r = await BG.exec('Jobs.get');
                 VERBOSE && console.error('hcaptcha invalid', JSON.stringify(r));
                 await BG.exec('Jobs.invalid', { job_id: r.job.id });
-            }
-            if (is_rate_limited() || is_banned()) {
+            } else if (is_rate_limited()) {
+                const r = await BG.exec('Jobs.get');
+                VERBOSE && console.error('hcaptcha rate limited', JSON.stringify(r));
+                await BG.exec('Jobs.rate_limited', { job_id: r.job.id });
+            } else if (is_banned()) {
                 const r = await BG.exec('Jobs.get');
                 VERBOSE && console.error('hcaptcha accont banned', JSON.stringify(r));
+                await BG.exec('Jobs.rate_limited', { job_id: r.job.id });
+            } else if (is_timeout(start, TIMEOUTS.hcaptcha)) {
+                const r = await BG.exec('Jobs.get');
+                VERBOSE && console.error('hcaptcha timeout error', JSON.stringify(r));
                 await BG.exec('Jobs.rate_limited', { job_id: r.job.id });
             }
         }

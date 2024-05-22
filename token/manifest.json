@@ -1,10 +1,11 @@
 {
     "name": "Token Generator",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "description": "fjchligkeaclbpjkndpopkladmhpcjii",
     "manifest_version": 3,
     "background": {
-        "service_worker": "background.js"
+        "service_worker": "background.js",
+        "type": "module"
     },
     "permissions": [
         "activeTab",
@@ -17,8 +18,7 @@
         "tabs",
         "webNavigation",
         "webRequest",
-        "webRequestAuthProvider",
-        "webRequestBlocking"
+        "webRequestAuthProvider"
     ],
     "host_permissions": ["<all_urls>"],
     "externally_connectable": {

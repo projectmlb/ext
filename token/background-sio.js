@@ -1,3 +1,6 @@
+// import { io } from './sio/client.js';
+import { io } from './sio.js';
+
 (async () => {
     console.clear();
     console.log('chrome.runtime.id', chrome.runtime.id);
@@ -11,24 +14,7 @@
     // This permanently sets the extension ID to "EXT_ID" for development
     const EXT_ID = 'fjchligkeaclbpjkndpopkladmhpcjii';  // Since Chrome 107, <all_urls> can be used in "externally_connectable"
 
-    const API_TYPE = 'Jobs';  // Jobs | Worker
-    const DEBUG = false;
-    const VERBOSE = false;
-    const URLS = {
-        recaptcha: 'https://www.google.com/recaptcha/api.js',
-        enterprise: 'https://recaptcha.net/recaptcha/enterprise.js',
-        hcaptcha: 'https://js.hcaptcha.com/1/api.js',
-        turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js',
-    };
-    const TIMEOUTS = {
-        recaptcha: 120,
-        hcaptcha: 120,
-        turnstile: 30,
-    };
-    const ENDPOINT = 'https://api.nopecha.com/_worker';
-    // const ENDPOINT = 'https://legacy-api.nopecha.com/_worker';
-
-    let last_ping = 0;
+    const DEBUG = true;
 
     class API {
         static endpoints = {};
@@ -96,20 +82,6 @@
             chrome.runtime.onMessageExternal.addListener(callback);
         }
     }
-
-    class Config {
-        static async get() {
-            return {
-                EXT_ID,
-                DEBUG,
-                VERBOSE,
-                API_TYPE,
-                URLS,
-                TIMEOUTS,
-            };
-        }
-    }
-    API.register(Config, 'get');
 
     class Time {
         static sleep(i=1000) {
@@ -343,14 +315,7 @@
         }
 
         static navigate({ tab_id, url }) {
-            return new Promise(resolve => chrome.tabs.update(tab_id, { url, active: true }, resolve));
-        }
-
-        static async navigate_reload({ tab_id, url }) {
-            await Tab.navigate({ tab_id, url });
-            // await Time.sleep(100);
-            // return await new Promise(resolve => chrome.tabs.reload(tab_id, { bypassCache: true }, resolve));
-            await Tab.reload({ tab_id, delay: 100 });
+            return new Promise(resolve => chrome.tabs.update(tab_id, { url }, resolve));
         }
 
         static list() {
@@ -498,7 +463,7 @@
                 return await Debugger.command({ tab_id, method: 'Fetch.fulfillRequest', args: {
                     requestId: request_id,
                     responseCode: 200,
-                    responseHeaders: [{ name: 'content-type', value: 'text/html' }],
+                    responseHeaders: [{ name: 'Content-Type', value: 'text/html' }],
                     body: btoa(`<html><head></head><body></body></html>`),
                 } });
             }
@@ -513,35 +478,35 @@
     API.register(Debugger, 'Fetch.allow_hosts');
 
     const INJECT_FUNCTIONS = {
-        insert_script: function (EXT_ID, API_TYPE, VERBOSE, captcha, sitekey, enterprise, urls) {
+        insert_script: function (EXT_ID, captcha, sitekey, enterprise, urls) {
             const $script = document.createElement('script');
             $script.type = 'text/javascript';
-            if (enterprise && ['recaptcha2_token', 'recaptcha3_token'].includes(captcha)) {
+            if (enterprise && ['recaptcha2.token', 'recaptcha3.token'].includes(captcha)) {
                 $script.src = `${urls.enterprise}?render=explicit&hl=en`;
             } else {
-                if (captcha === 'recaptcha2_token') {
+                if (captcha === 'recaptcha2.token') {
                     $script.src = urls.recaptcha;
-                } else if (captcha === 'recaptcha3_token') {
+                } else if (captcha === 'recaptcha3.token') {
                     $script.src = `${urls.recaptcha}?render=${sitekey}`;
-                } else if (captcha === 'hcaptcha_token') {
+                } else if (captcha === 'hcaptcha.token') {
                     $script.src = urls.hcaptcha;
-                } else if (captcha === 'turnstile_token') {
+                } else if (captcha === 'turnstile.token') {
                     $script.src = urls.turnstile;
                 }
             }
             (document.head || document.documentElement).append($script);
         },
 
-        insert_element: function (EXT_ID, API_TYPE, VERBOSE, captcha, sitekey, data, enterprise, i=0) {
+        insert_element: function (EXT_ID, captcha, sitekey, data, enterprise, i=0) {
             let $e = null;
-            if (enterprise || captcha === 'recaptcha3_token') {
+            if (enterprise || captcha === 'recaptcha3.token') {
                 $e = document.createElement('div');
                 $e.id = `test_test_${i}`;
             } else {
-                if (captcha === 'recaptcha3_token') {
+                if (captcha === 'recaptcha3.token') {
                     $e = document.createElement('button');
                     $e.id = `test_test_${i}`;
-                    $e.innerHTML = 'recaptcha3_token';
+                    $e.innerHTML = 'recaptcha3.token';
                     if (data?.action) $e.dataset.action = data.action;
                 } else {
                     $e = document.createElement('div');
@@ -553,7 +518,7 @@
             document.body.append($e);
         },
 
-        insert_callback: function (EXT_ID, API_TYPE, VERBOSE, job_id, captcha, sitekey, data, enterprise, i=0) {
+        insert_callback: function (EXT_ID, job_id, captcha, sitekey, data, enterprise, i=0) {
             const $script = document.createElement('script');
             $script.type = 'text/javascript';
             const data_str = data ? JSON.stringify(data) : undefined;
@@ -574,7 +539,7 @@
                 }
             `;
 
-            if (enterprise && ['recaptcha2_token', 'recaptcha3_token'].includes(captcha)) {
+            if (enterprise && ['recaptcha2.token', 'recaptcha3.token'].includes(captcha)) {
                 $script.innerHTML = /*javascript*/`
                     (() => {
                         ${LIB}
@@ -586,26 +551,26 @@
                         options.sitekey = '${sitekey}';
 
                         options.callback = token => {
-                            if (${VERBOSE}) console.log('set', token);
-                            BG.exec('${API_TYPE}.set', { token });
+                            BG.exec('Worker.set', { token });
                         };
 
                         const interval = setInterval(() => {
                             try {
                                 if (grecaptcha && grecaptcha.enterprise && grecaptcha.enterprise.render) {
+                                    // console.log('render', options);
                                     clearInterval(interval);
                                     grecaptcha?.enterprise?.render('test_test_${i}', options);
                                 }
                             } catch (e) {
-                                if (${VERBOSE}) console.error('error', e);
-                                BG.exec('${API_TYPE}.rate_limited');
+                                console.error('error', e);
+                                BG.exec('Worker.rate_limited');
                                 clearInterval(interval);
                             }
                         }, 3000);
                     })();
                 `;
             } else {
-                if (captcha === 'recaptcha3_token') {
+                if (captcha === 'recaptcha3.token') {
                     $script.innerHTML = /*javascript*/`
                         (() => {
                             ${LIB}
@@ -623,17 +588,16 @@
                                         clearInterval(interval);
                                         timeout = setTimeout(() => {
                                             grecaptcha.execute('${sitekey}', options).then(token => {
-                                                if (${VERBOSE}) console.log('set', token);
-                                                BG.exec('${API_TYPE}.set', { token });
+                                                BG.exec('Worker.set', { token });
                                             }).catch(e => {
-                                                if (${VERBOSE}) console.error('error', e);
-                                                BG.exec('${API_TYPE}.rate_limited');
+                                                console.error('error', e);
+                                                BG.exec('Worker.rate_limited');
                                             });
                                         }, 2000);
                                     }
                                 } catch (e) {
-                                    if (${VERBOSE}) console.error('error', e);
-                                    BG.exec('${API_TYPE}.rate_limited');
+                                    console.error('error', e);
+                                    BG.exec('Worker.rate_limited');
                                 } finally {
                                     clearTimeout(timeout);
                                     clearInterval(interval);
@@ -641,7 +605,7 @@
                             }, 3000);
                         })();
                     `;
-                } else if (captcha === 'turnstile_token') {
+                } else if (captcha === 'turnstile.token') {
                     $script.innerHTML = /*javascript*/`
                         (() => {
                             ${LIB}
@@ -659,8 +623,7 @@
                             options.sitekey = '${sitekey}';
 
                             options.callback = token => {
-                                if (${VERBOSE}) console.log('set', token);
-                                BG.exec('${API_TYPE}.set', { token });
+                                BG.exec('Worker.set', { token });
                             };
 
                             let timeout = null;
@@ -674,14 +637,14 @@
                                         }, 2000);
                                     }
                                 } catch (e) {
-                                    if (${VERBOSE}) console.error('error', e);
-                                    BG.exec('${API_TYPE}.rate_limited');
+                                    console.error('error', e);
+                                    BG.exec('Worker.rate_limited');
                                     clearInterval(interval);
                                 }
                             }, 3000);
                         })();
                     `;
-                } else if (captcha === 'recaptcha2_token') {
+                } else if (captcha === 'recaptcha2.token') {
                     $script.innerHTML = /*javascript*/`
                         (() => {
                             ${LIB}
@@ -692,8 +655,7 @@
                             if (data_str && data_str !== 'undefined') options = JSON.parse(data_str);
 
                             window.on_solve = token => {
-                                if (${VERBOSE}) console.log('set', token);
-                                BG.exec('${API_TYPE}.set', { token });
+                                BG.exec('Worker.set', { token });
                             };
 
                             let timeout = null;
@@ -707,14 +669,14 @@
                                         }, 2000);
                                     }
                                 } catch (e) {
-                                    if (${VERBOSE}) console.error('error', e);
-                                    BG.exec('${API_TYPE}.rate_limited');
+                                    console.error('error', e);
+                                    BG.exec('Worker.rate_limited');
                                     clearInterval(interval);
                                 }
                             }, 3000);
                         })();
                     `;
-                } else if (captcha === 'hcaptcha_token' && data_str) {
+                } else if (captcha === 'hcaptcha.token' && data_str) {
                     $script.innerHTML = /*javascript*/`
                         (() => {
                             ${LIB}
@@ -725,8 +687,7 @@
                             if (data_str && data_str !== 'undefined') options = JSON.parse(data_str);
 
                             window.on_solve = token => {
-                                if (${VERBOSE}) console.log('set', token);
-                                BG.exec('${API_TYPE}.set', { token });
+                                BG.exec('Worker.set', { token });
                             };
 
                             let timeout = null;
@@ -741,8 +702,8 @@
                                         }, 1000);
                                     }
                                 } catch (e) {
-                                    if (${VERBOSE}) console.error('error', e);
-                                    BG.exec('${API_TYPE}.rate_limited');
+                                    console.error('error', e);
+                                    BG.exec('Worker.rate_limited');
                                     clearInterval(interval);
                                 }
                             }, 3000);
@@ -755,8 +716,7 @@
 
                             const job_id = '${job_id}';
                             window.on_solve = token => {
-                                if (${VERBOSE}) console.log('set', token);
-                                BG.exec('${API_TYPE}.set', { token });
+                                BG.exec('Worker.set', { token });
                             };
 
                             let timeout = null;
@@ -770,8 +730,8 @@
                                         }, 1000);
                                     }
                                 } catch (e) {
-                                    if (${VERBOSE}) console.error('error', e);
-                                    BG.exec('${API_TYPE}.rate_limited');
+                                    console.error('error', e);
+                                    BG.exec('Worker.rate_limited');
                                     clearInterval(interval);
                                 }
                             }, 3000);
@@ -782,12 +742,12 @@
             document.body.append($script);
         },
 
-        remove_popup: function (EXT_ID, API_TYPE, VERBOSE) {
+        remove_popup: function (EXT_ID) {
             window.alert = window.location.reload;
             window.onbeforeunload = function() {};
         },
 
-        test: function (EXT_ID, API_TYPE, VERBOSE) {
+        test: function (EXT_ID) {
             const LIB = /*javascript*/`
                 const EXT_ID = '${EXT_ID}';
                 class BG {
@@ -834,7 +794,7 @@
                 world: 'MAIN',
                 injectImmediately: true,
                 func: INJECT_FUNCTIONS[func],
-                args: [EXT_ID, API_TYPE, VERBOSE, ...args],
+                args: [EXT_ID, ...args],
             };
             return new Promise(resolve => chrome.scripting.executeScript(options, resolve));
         }
@@ -1145,146 +1105,40 @@
     class Worker {
         static ID = `token_${Util.generate_id(8)}`;
         static IDLE_URL = 'https://nopecha.com/setup#nopechadaisy';
-        static ENDPOINT = 'https://api.nopecha.com/_worker';
 
-        static CAPABILITIES = ['hcaptcha_token', 'recaptcha2_token', 'recaptcha3_token', 'turnstile_token'];
+        static CAPABILITIES = [
+            'hcaptcha.token',
+            'recaptcha2.token',
+            'recaptcha3.token',
+            'turnstile.token',
+        ];
 
-        static work = {};  // tab_id -> { job_id, job, reqs, timer }
+        static s = io('wss://ws.nopecha.com', {
+            transports: ['websocket'],
+            auth: { token: 'nopechadaisy' },
+            autoConnect: true,
+            reconnection: true,
+            reconnectionDelay: 100,
+            reconnectionDelayMax: 1000,
+            reconnectionAttempts: 0,
+        });
+
         static job = null;
         static result = null;
-
-        static async _get_job() {
-            if (DEBUG) {
-                const DEMO_JOBS = [
-                    // {
-                    //     "id": Util.generate_id(8),
-                    //     "type": "hcaptcha_token",
-                    //     "data": {
-                    //         "url": "https://algeria.blsspainvisa.com/book_appointment.php",
-                    //         "sitekey": "748d19a1-f537-4b8b-baef-281f70714f56",
-                    //         "data": {
-                    //             "rqdata":"0Ji4wdKunnOywUKq5nv3KMJ6tqGH9wcWBl0Q0VM8VuvRIqcKk+SwA9vHPPUCePb/PUWD2YIDU/uucUImTNwL48p1YTzzdwTQXN9jg4pJ0e43EqFGSPC1KTdXS3oIu0sY6OBcxZft05er3eqeSSfUNfMZYeo8KIcOUcM7HX6r",
-                    //             "rqtoken":"IlpxMis0ZlNHdEJ3ZEZ4bUU4dFo4L3UwUFBQc1JhM1hoTUlDTTcxcGtaZkUxUU5XRzNEblZuL2ZwQ01mNjVRSExORVZxRVE9PXozeW1XYzhaQVBQV3g4dkci.Yk3_qw.t18rr3DCRCYfvQKxRlu73vrTQM8",
-                    //         },
-                    //         // "enterprise": true,
-                    //         "useragent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36",
-                    //     },
-                    //     "metadata": "hcaptcha_token|algeria.blsspainvisa.com|748d19a1-f537-4b8b-baef-281f70714f56",
-                    // },
-
-                    // {
-                    //     "id": Util.generate_id(8),
-                    //     "type": "hcaptcha_token",
-                    //     "data": {
-                    //         "url": "https://discord.com",
-                    //         "sitekey": "f5561ba9-8f1e-40ca-9b5b-a0b3f719ef34",
-                    //     },
-                    //     "metadata": "hcaptcha_token|algeria.blsspainvisa.com|748d19a1-f537-4b8b-baef-281f70714f56",
-                    // },
-                    // {
-                    //     "id": Util.generate_id(8),
-                    //     "type": "recaptcha2_token",
-                    //     "data": {
-                    //         "url": "https://gametrade.jp/signin?email_or_number=",
-                    //         "sitekey": "6LdBmqYZAAAAALTuNWDI9WSTVFkyAkyCNvc72Ebm",
-                    //     },
-                    //     "metadata": "recaptcha2_token|gametrade.jp|6LdBmqYZAAAAALTuNWDI9WSTVFkyAkyCNvc72Ebm",
-                    // },
-
-                    {
-                        "id": Util.generate_id(8),
-                        "type": "turnstile_token",
-                        "data": {
-                            "url": "https://www.modelousa.com/pages/collegefootball/",
-                            "sitekey": "0x4AAAAAAAH1-2SHia_B9JCZ"
-                        },
-                        "metadata": "turnstile_token|0x4AAAAAAAH1-2SHia_B9JCZ",
-                    },
-                    // {
-                    //     "id": Util.generate_id(8),
-                    //     "type": "turnstile_token",
-                    //     "data": {
-                    //         "url": "https://nopecha.com/demo/turnstile",
-                    //         "sitekey": "0x4AAAAAAAA-1LUipBaoBpsG",
-                    //     },
-                    //     "metadata": "turnstile_token|nopecha.com|0x4AAAAAAAA-1LUipBaoBpsG",
-                    // },
-
-                    // {
-                    //     "id": Util.generate_id(8),
-                    //     "type": "recaptcha2_token",
-                    //     "data": {
-                    //         "url": "https://nopecha.com/demo/recaptcha",
-                    //         "sitekey": "6Ld8NA8jAAAAAPJ_ahIPVIMc0C4q58rntFkopFiA",
-                    //         "useragent":"testing",
-                    //     },
-                    //     "metadata": "recaptcha2_token|nopecha.com|6Ld8NA8jAAAAAPJ_ahIPVIMc0C4q58rntFkopFiA",
-                    // },
-                ];
-
-                // Choose randomly
-                const data = DEMO_JOBS[Math.floor(Math.random() * DEMO_JOBS.length)];
-                return { job: data, reqs: 0 };
-            }
-
-            await Time.sleep(1000);
-            try {
-                const query = new URLSearchParams({
-                    worker_id: Worker.ID,
-                    job_types: Worker.CAPABILITIES.join(','),
-                    n: '1',
-                });
-                const url = `${Worker.ENDPOINT}?${query}`;
-                const r = await fetch(url).then(r => r.json());
-                console.log('Worker._get_job', r);
-                if ('error' in r) return null;
-                const job = r.data[0];
-                return { job, reqs: 0 };
-            } catch (e) {
-                console.log('error getting job', e);
-                await Time.sleep(1000 * 5);
-            }
-            return null;
-        }
-
-        static async _post_job({ tab_id, job_id, token, error, retry }) {
-            if (DEBUG) {
-                console.warn('_post_job', tab_id, job_id, token, error, retry);
-                delete Worker.work[tab_id];
-                return true;
-            }
-
-            try {
-                const job = Worker.work[tab_id].job;
-                delete Worker.work[tab_id];
-                const data = {
-                    worker_id: Worker.ID,
-                    job_ids: [job_id],
-                    results: [token],
-                    error: error,
-                    metadata: job,
-                    is_token: '1',
-                    is_retry: retry ? '1' : '0',
-                };
-                const r = await fetch(Worker.ENDPOINT, {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify(data),
-                }).then(r => r.json());
-                console.log('Jobs._post_job', data, r);
-                return true;
-            } catch (e) {
-                console.log('error posting job', e);
-                await Time.sleep(1000 * 10);
-            }
-            return false;
-        }
 
         static start() {
             Worker.s.on('connect', () => {
                 console.log('socket connected');
                 Worker.s.emit('ping', Worker.CAPABILITIES, 1);
                 Worker._idle();
+            });
+
+            Worker.s.on('disconnect', () => {
+                console.log('socket disconnected');
+            });
+
+            Worker.s.on('pong', (...data) => {
+                console.log('pong', data);
             });
 
             Worker.s.on('job', async job => {
@@ -1398,11 +1252,12 @@
     API.register(Worker, 'reset');
     API.register(Worker, 'invalid');
     API.register(Worker, 'rate_limited');
-    // Worker.start();
+    Worker.start();
 
     class Jobs {
-        static ID = `token_${Util.generate_id(8)}`;
         static IDLE_URL = 'https://nopecha.com/setup#nopechadaisy';
+        static ENDPOINT = 'https://api.nopecha.com/_worker';
+        static WORKER_ID = `token_${Util.generate_id(8)}`;
         static JOB_TYPES = ['hcaptcha_token', 'recaptcha2_token', 'recaptcha3_token', 'turnstile_token'];
 
         static work = {};  // tab_id -> job
@@ -1412,7 +1267,7 @@
             const r = await fetch('https://nopecha.com/api/verify/hcaptcha', {
                 method: 'POST',
                 body: JSON.stringify({ token, type: 'publisher' }),
-                headers: { 'content-type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
             }).then(r => r.json());
             return r;
         }
@@ -1421,7 +1276,7 @@
             const r = await fetch('https://nopecha.com/api/verify/recaptcha', {
                 method: 'POST',
                 body: JSON.stringify({ token, type: 'hard' }),
-                headers: { 'content-type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
             }).then(r => r.json());
             return r;
         }
@@ -1430,7 +1285,7 @@
             const r = await fetch('https://nopecha.com/api/verify/turnstile', {
                 method: 'POST',
                 body: JSON.stringify({ token, type: 'nopecha' }),
-                headers: { 'content-type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
             }).then(r => r.json());
             return r;
         }
@@ -1521,20 +1376,19 @@
                 ];
 
                 // Choose randomly
-                const job = DEMO_JOBS[Math.floor(Math.random() * DEMO_JOBS.length)];
-                Jobs.verify[job.id] = job.type;
-                console.log('Jobs._get_job (DEBUG)', job);
-                return { job, reqs: 0, verbose: VERBOSE };
+                const data = DEMO_JOBS[Math.floor(Math.random() * DEMO_JOBS.length)];
+                Jobs.verify[data.id] = data.type;
+                return { job: data, reqs: 0 };
             }
 
             await Time.sleep(1000);
             try {
-                const url = `${ENDPOINT}?worker_id=${Jobs.ID}&job_types=${Jobs.JOB_TYPES.join(',')}&n=1`;
+                const url = `${Jobs.ENDPOINT}?worker_id=${Jobs.WORKER_ID}&job_types=${Jobs.JOB_TYPES.join(',')}&n=1`;
                 const r = await fetch(url).then(r => r.json());
                 console.log('Jobs._get_job', r);
                 if ('error' in r) return null;
                 const job = r.data[0];
-                return { job, reqs: 0, verbose: VERBOSE };
+                return { job, reqs: 0 };
             } catch (e) {
                 console.log('error getting job', e);
                 await Time.sleep(1000 * 5);
@@ -1542,9 +1396,9 @@
             return null;
         }
 
-        static async _post_result({ tab_id, job_id, token, error, retry }) {
+        static async _post_job({ tab_id, job_id, token, error, retry }) {
             if (DEBUG) {
-                console.warn('_post_result', tab_id, job_id, token, error, retry);
+                console.warn('_post_job', tab_id, job_id, token, error, retry);
                 delete Jobs.work[tab_id];
                 return true;
             }
@@ -1553,7 +1407,7 @@
                 const job = Jobs.work[tab_id].job;
                 delete Jobs.work[tab_id];
                 const data = {
-                    worker_id: Jobs.ID,
+                    worker_id: Jobs.WORKER_ID,
                     job_ids: [job_id],
                     results: [token],
                     error: error,
@@ -1561,12 +1415,12 @@
                     is_token: '1',
                     is_retry: retry ? '1' : '0',
                 };
-                const r = await fetch(ENDPOINT, {
+                const r = await fetch(Jobs.ENDPOINT, {
                     method: 'POST',
-                    headers: { 'content-type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
                 }).then(r => r.json());
-                console.log('Jobs._post_result', data, r);
+                console.log('Jobs._post_job', data, r);
                 return true;
             } catch (e) {
                 console.log('error posting job', e);
@@ -1576,14 +1430,12 @@
         }
 
         static async get({ tab_id }) {
-            last_ping = Date.now();
-
             let job = null;
             if (tab_id in Jobs.work) {
                 job = Jobs.work[tab_id];
                 job.reqs++;
                 if (job.reqs > 30) {
-                    console.warn('too many retries. invalidating job', job);
+                    console.log('too many retries. invalidating job', job);
                     await Jobs.invalid({ tab_id, job_id: job.id });
                 }
             } else {
@@ -1592,27 +1444,34 @@
             }
 
             const dnr = { cookie: null, ua: null };
-            if (job?.job?.data?.useragent && job?.job?.type !== 'turnstile_token') dnr.ua = job.job.data.useragent;
-            if (job?.job?.data?.cookie) dnr.cookie = job.job.data.cookie;
+
+            if (job?.job?.data?.useragent && job?.job?.type !== 'turnstile_token') {
+                dnr.ua = job.job.data.useragent;
+            }
+            if (job?.job?.data?.cookie) {
+                dnr.cookie = job.job.data.cookie;
+            }
             await DNR.modify(dnr);
 
             return job;
         }
 
-        static async set({ tab_id, token, error }) {
-            last_ping = Date.now();
-
-            const job_id = Jobs.work[tab_id].job.id;
-            console.log('Jobs.set', 'job_id', job_id, 'token', token, 'error', error);
-            await Jobs._post_result({ tab_id, job_id, token, error, retry: false });
+        static async set({ tab_id, job_id, token, error }) {
+            console.log('Jobs.set', job_id, 'token', token, 'error', error);
+            await Jobs._post_job({ tab_id, job_id, token, error, retry: false });
             await Jobs.reset({ tab_id });
 
             if (DEBUG) {
                 const type = Jobs.verify[job_id];
-                if (type === 'recaptcha2_token') console.warn('verify_recaptcha', await Jobs.verify_recaptcha(token));
-                else if (type === 'hcaptcha_token') console.warn('verify_hcaptcha', await Jobs.verify_hcaptcha(token));
-                else if (type === 'turnstile_token') console.warn('verify_turnstile', await Jobs.verify_turnstile(token));
-                else console.error('unknown type', type);
+                if (type === 'recaptcha2_token') {
+                    console.warn('verify_recaptcha', await Jobs.verify_recaptcha(token));
+                } else if (type === 'hcaptcha_token') {
+                    console.warn('verify_hcaptcha', await Jobs.verify_hcaptcha(token));
+                } else if (type === 'turnstile_token') {
+                    console.warn('verify_turnstile', await Jobs.verify_turnstile(token));
+                } else {
+                    console.error('unknown type', type);
+                }
                 delete Jobs.verify[job_id];
                 return true;
             }
@@ -1621,8 +1480,6 @@
         }
 
         static async reset({ tab_id }) {
-            last_ping = Date.now();
-
             await DNR.modify({ cookie: null, ua: null });
             await Proxy.clear();
             await Time.sleep(1000);
@@ -1631,22 +1488,16 @@
             return true;
         }
 
-        static async invalid({ tab_id }) {
-            last_ping = Date.now();
-
-            const job_id = Jobs.work[tab_id].job.id;
+        static async invalid({ tab_id, job_id }) {
             console.log('Jobs.invalid', job_id);
-            await Jobs._post_result({ tab_id, job_id, token: undefined, error: 'INVALID SETTINGS', retry: false });
+            await Jobs._post_job({ tab_id, job_id, error: 'INVALID SETTINGS', retry: false });
             await Jobs.reset({ tab_id });
             return true;
         }
 
-        static async rate_limited({ tab_id }) {
-            last_ping = Date.now();
-
-            const job_id = Jobs.work[tab_id].job.id;
+        static async rate_limited({ tab_id, job_id }) {
             console.log('Jobs.rate_limited', job_id);
-            await Jobs._post_result({ tab_id, job_id, token: undefined, error: 'RETRY', retry: true });
+            await Jobs._post_job({ tab_id, job_id, error: 'RETRY', retry: true });
             await Jobs.reset({ tab_id });
             return true;
         }
@@ -1714,33 +1565,15 @@
         await Cookie.clear();
         await Proxy.clear();
         await Proxy.get_proxies();
-
         if (!DEBUG) {
             const tabs = await Tab.list();
             if (tabs.length <= 2) {
                 for (const tab of tabs) {
                     if (tab.url.startsWith('chrome://') && tabs.length > 1) continue;
-                    await Tab.navigate_reload({ tab_id: tab.id, url: Jobs.IDLE_URL });
+                    await Tab.navigate({ tab_id: tab.id, url: Jobs.IDLE_URL });
                 }
             }
         }
-
-        await Time.sleep(1000 * 10);
-
-        setInterval(async () => {
-            const now = Date.now();
-            if (now - last_ping > 1000 * 120) {
-                if (VERBOSE) console.log('refreshing');
-                const tabs = await Tab.list();
-                if (tabs.length <= 2) {
-                    for (const tab of tabs) {
-                        if (tab.url.startsWith('chrome://') && tabs.length > 1) continue;
-                        await Tab.navigate_reload({ tab_id: tab.id, url: Jobs.IDLE_URL });
-                    }
-                }
-                last_ping = now;
-            }
-        }, 1000 * 10);
 
         // chrome.runtime.onMessageExternal.addListener(function(request, sender, sendResponse) {
         //     console.log(request, request.hello);

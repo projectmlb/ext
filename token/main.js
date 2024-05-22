@@ -1,5 +1,9 @@
 (() => {
-    const VERBOSE = false;
+    let EXT_ID = null;
+    let API_TYPE = null;
+    let DEBUG = null;
+    let VERBOSE = null;
+    let URLS = null;
 
     class BG {
         static exec() {
@@ -25,18 +29,8 @@
         return await fetch('https://api.ipify.org?format=json').then(r => r.json()).then(r => r.ip);
     }
 
-    const URLS = {
-        recaptcha: 'https://www.google.com/recaptcha/api.js',
-        enterprise: 'https://recaptcha.net/recaptcha/enterprise.js',
-        hcaptcha: 'https://js.hcaptcha.com/1/api.js',
-        turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js',
-    };
-
     async function insert_captcha(job_id, captcha, sitekey, data, enterprise, i=0) {
-        VERBOSE && console.log('captcha', captcha, 'sitekey', sitekey, 'data', data, 'enterprise', enterprise, 'i', i);
-        // insert_script(captcha, sitekey, enterprise);
-        // insert_element(captcha, sitekey, data, enterprise, i);
-        // insert_callback(captcha, sitekey, data, enterprise, i);
+        VERBOSE && console.log('captcha', captcha, 'sitekey', sitekey, 'data', data, 'enterprise', enterprise, 'trial number', i);
         await BG.exec('Injector.inject', { func: 'insert_script', args: [captcha, sitekey, enterprise, URLS] });
         await BG.exec('Injector.inject', { func: 'insert_element', args: [captcha, sitekey, data, enterprise, i] });
         await BG.exec('Injector.inject', { func: 'insert_callback', args: [job_id, captcha, sitekey, data, enterprise, i] });
@@ -49,80 +43,37 @@
     }
 
     async function start() {
-        // const allow_hosts = [
-        //     'api.nopecha.com',
-        //     'dev-api.nopecha.com',
-        //     'jaewan-yun.com',
-        //     'api.ipify.org',
-        //     // Captcha providers
-        //     'google.com',
-        //     'gstatic.com',
-        //     'hcaptcha.com',
-        //     'recaptcha.net',
-        //     'cloudflare.com',
-        // ];
-
-        // await BG.exec('Debugger.Fetch.allow_hosts', { hosts: allow_hosts });
+        const config = await BG.exec('Config.get');
+        EXT_ID = config.EXT_ID;
+        API_TYPE = config.API_TYPE;
+        DEBUG = config.DEBUG;
+        VERBOSE = config.VERBOSE;
+        URLS = config.URLS;
+        VERBOSE && console.log('config', config);
 
         await sleep(3000);
 
         let job_id = null;
 
-        // window.addEventListener('message', async e => {
-        //     if (job_id === null) {
-        //         console.error('job_id is null', job_id, e);
-        //         await BG.exec('Jobs.set', { job_id, error: 'UNKNOWN TOKEN ERROR' });
-        //         await BG.exec('Jobs.reset');
-        //     }
-        //     else if (e.data.event === 'NOPECHA_TOKEN') {
-        //         VERBOSE && console.log('NOPECHA_TOKEN', e.data.token);
-        //         await BG.exec('Jobs.set', { job_id, token: e.data.token });
-        //         await BG.exec('Jobs.reset');
-        //     }
-        //     else if (e.data.event === 'NOPECHA_ERROR') {
-        //         VERBOSE && console.log('NOPECHA_ERROR', e.data.error);
-        //         // await BG.exec('Jobs.set', {job_id, error: e.data.error});
-        //         // await BG.exec('Jobs.reset');
-        //         await BG.exec('Jobs.rate_limited', { job_id });
-        //         await BG.exec('Jobs.reset');
-        //     }
-        // });
-
         while (true) {
-            const r = await BG.exec('Jobs.get');
-            if (r === null) {
+            const r = await BG.exec(`${API_TYPE}.get`);
+            if (!r) {
                 await sleep(1000);
                 continue;
             }
-            const job = r.job;
-            VERBOSE && console.log('Jobs.get', job);
+
+            const { job } = r;
+            VERBOSE && console.log(`${API_TYPE}.get`, job);
             job_id = job.id;
-
-            if (job.retries > 30) {
-                await BG.exec('Jobs.set', { job_id, error: 'MAX RETRIES' });
-                await BG.exec('Jobs.reset');
-                continue;
-            }
-
-            // await BG.exec('Jobs.set', {job_id, token: 'testing'});
-            // continue;
 
             // Refresh on timeout to prevent getting stuck
             setTimeout(async () => {
-                // await BG.exec('Jobs.set', {job_id, error: 'SOLVE TIMEOUT'});
-                await BG.exec('Jobs.rate_limited', { job_id });
-                await BG.exec('Jobs.reset');
+                VERBOSE && console.error('timeout');
+                await BG.exec(`${API_TYPE}.rate_limited`);
+                await BG.exec(`${API_TYPE}.reset`);
             }, 1000 * 180);
 
             if (!window.location.href.includes('nopecha.com/setup') && is_in_target(job.data.url)) {
-                // Check that sitekey exists
-                const sitekey = job.data.sitekey;
-                if (!sitekey || sitekey.trim() === '') {
-                    await BG.exec('Jobs.set', { job_id, error: 'INVALID SETTINGS' });
-                    await BG.exec('Jobs.reset');
-                    return;
-                }
-
                 let status = {
                     ip: null,
                     scheme: null,
@@ -138,13 +89,13 @@
                             status = await BG.exec('Proxy.status');
                             status.ip = await myip();
                         } else {
-                            console.error('user proxy failed to set');
+                            VERBOSE && console.error('user proxy failed to set');
                             // TODO
                         }
                         if (!status.ip) {
-                            // await BG.exec('Jobs.set', {job_id, error: 'PROXY TIMEOUT'});
-                            await BG.exec('Jobs.rate_limited', { job_id });
-                            await BG.exec('Jobs.reset');
+                            VERBOSE && console.error('proxy timeout');
+                            await BG.exec(`${API_TYPE}.rate_limited`);
+                            await BG.exec(`${API_TYPE}.reset`);
                             return;
                         }
                     }
@@ -153,12 +104,13 @@
                         status = await BG.exec('Proxy.status');
                         status.ip = await myip();
                     } else {
-                        console.error('personal proxy failed to set');
+                        VERBOSE && console.error('personal proxy failed to set');
                         // TODO
                     }
                     VERBOSE && console.log('no proxies provided. connected to personal proxy', status);
                     if (!status.ip) {
-                        await BG.exec('Jobs.rate_limited', { job_id });
+                        VERBOSE && console.error('personal proxy timeout');
+                        await BG.exec(`${API_TYPE}.rate_limited`);
                         return;
                     }
                 }
@@ -178,10 +130,8 @@
                 document.body.prepend($e);
 
                 insert_captcha(job_id, job.type.replace('_dev', ''), job.data.sitekey, job.data.data, job.data.enterprise);
-            }
-            else {
+            } else {
                 VERBOSE && console.log(`navigate to target ${window.location.href} -> ${job.data.url}`);
-                // await BG.exec('Debugger.Fetch.allow_hosts', { hosts: allow_hosts });
                 window.location.href = job.data.url;
             }
             break;
