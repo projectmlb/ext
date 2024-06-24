@@ -1339,6 +1339,11 @@
                     await Worker.invalid({ tab_id });
                 }
             }
+
+            chrome.debugger.sendCommand({ tabId: tab_id }, 'Page.setWebLifecycleState', { state: 'active' }, () => {
+                console.log(`tab ${tab_id} is now emulated as active`);
+            });
+
             return Worker.job;
         }
 
@@ -1595,6 +1600,10 @@
             if (job?.job?.data?.useragent && job?.job?.type !== 'turnstile_token') dnr.ua = job.job.data.useragent;
             if (job?.job?.data?.cookie) dnr.cookie = job.job.data.cookie;
             await DNR.modify(dnr);
+
+            chrome.debugger.sendCommand({ tabId: tab_id }, 'Page.setWebLifecycleState', { state: 'active' }, () => {
+                console.log(`tab ${tab_id} is now emulated as active`);
+            });
 
             return job;
         }
